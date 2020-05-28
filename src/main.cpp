@@ -2,18 +2,16 @@
 #define NUM_SAMPLES 100
 #include <Wire.h>
 #include <Adafruit_SSD1306.h>
-#include <array>
-#include <chrono>
-#include <thread>
+#include <Arduino.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET   -1 // This display does not have a reset pin accessible
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-std::array<double, NUM_SAMPLES * 2> x_correlation(std::array<double, NUM_SAMPLES>raw_data,  std::array<double, NUM_SAMPLES>ref) ;
-std::array<double, NUM_SAMPLES> reference_wave(int amplitude, int frequency, int sampleRate, int numSamples) ;
-void printToDisplay(String s);
+void corr();
+void sample();
+void generate_ref(int sampling_frequency);
 
 void setup() {
   pinMode(ADC_IN, INPUT_ANALOG);
@@ -21,60 +19,86 @@ void setup() {
  // Displays Adafruit logo by default. call clearDisplay immediately if you don't want this.
   display.display();
   delay(2000);
-// Displays "Hello world!" on the screen display.clearDisplay();
+// Displays "Hello world!" on the screen 
+  display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
-   // display.println("Hello world!");
+  display.println("Hello world!");
   display.display();
 }
 
+double raw[NUM_SAMPLES];
+double reference[NUM_SAMPLES];
+double output[NUM_SAMPLES * 2];
+double ref_freq = 1000; 
+
 void loop() 
 {
-  display.clearDisplay();
-  int sampling_period = 0.1;
-  int sampling_rate_Hz = (int) (NUM_SAMPLES/ sampling_period);
+  
+  int start = micros();
+  sample();
+  double sample_time = (micros() - start) / pow(10, 6);
+  double sampling_frequency = NUM_SAMPLES / sample_time;
+  //generate_ref(sampling_frequency);
+  // corr();
 
-  std::array<double, NUM_SAMPLES> raw;
-  for (int i = 0; i < NUM_SAMPLES; i++) {
-    raw[i] = analogRead(ADC_IN);
-    //std::this_thread::sleep_for(std::chrono::milliseconds(100)) ;
-    delay(100);
-  };
-  std::array<double, NUM_SAMPLES> ref = reference_wave(1, 1000, sampling_rate_Hz, NUM_SAMPLES);
-  std::array<double, NUM_SAMPLES * 2> x_corr = x_correlation(raw, ref);
-  double maxSignal = *std::max_element(x_corr.begin(), x_corr.end());
-  printToDisplay((String) maxSignal);
-}
+  for (int n = 0; n < NUM_SAMPLES; ++n) {
+    reference[n] = sin(2*PI*ref_freq*n/sampling_frequency);
+  }
 
-std::array<double, NUM_SAMPLES * 2> x_correlation(std::array<double, NUM_SAMPLES>raw_data,  std::array<double, NUM_SAMPLES>ref) {
-  std::array<double, raw_data.size() + ref.size()> output = {0};
+  double output[NUM_SAMPLES * 2] = {};
 
-  int i = - 1;
-  for (int raw_index = 0; raw_index < (int) raw_data.size(); ++raw_index) {
+  int i = -1;
+  for(int raw_index = 0; raw_index < NUM_SAMPLES; ++raw_index) {
     i++;
-    int j = -1;
-    for (int ref_index = 0; ref_index < (int) ref.size(); ++ref_index) {
+    int j = -1 ;
+    for(int ref_index = 0; ref_index < NUM_SAMPLES; ++ref_index) { 
       j++;
-      output[i + j] += raw_data[raw_index] * ref[ref_index];
+      output[i+j] += raw[raw_index] * reference[ref_index];
+    }
+  } 
+
+  double highest = -10000000;
+  for (double x : output) {
+    if (x > highest) {
+      highest = x; 
     }
   }
-  return output;
-}
 
-std::array<double, NUM_SAMPLES> reference_wave(int amplitude, int frequency, int sampleRate, int numSamples) {
-  std::array<double, NUM_SAMPLES> wave;
-
-  for (int n = 0; n < numSamples; ++n) {
-    wave[n] = amplitude * sin(2 * PI * frequency * n / sampleRate);
-  }
-
-  return wave;
-}
-
-void printToDisplay(String s) 
-{
   display.clearDisplay();
-  display.setCursor(0,0);
-  display.println(s);
+  display.setCursor(0, 0);
+  display.println("Signal Strength:");
+  display.println(highest);
+//   display.println("Analog Input:");
+//   display.println(analogRead(ADC_IN));
+  display.display();
 }
+
+/*
+void generate_ref(int sampling_frequency) {
+  for (int n = 0; n < NUM_SAMPLES; ++n) {
+    reference[n] = sin(2*PI*ref_freq*n/sampling_frequency);
+  }
+}
+*/
+
+void sample() {
+  for (int i=0; i < NUM_SAMPLES; ++i){
+    raw[i] = analogRead(ADC_IN);
+  }
+}
+
+/*
+void corr() {
+  int i = -1;
+  for(int raw_index = 0; raw_index < NUM_SAMPLES; ++raw_index) {
+    i++;
+    int j = -1 ;
+    for(int ref_index = 0; ref_index < NUM_SAMPLES; ++ref_index) { 
+      j++;
+      output[i+j] += raw[raw_index] * reference[ref_index];
+    }
+  } 
+}
+*/
